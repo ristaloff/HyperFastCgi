@@ -261,9 +261,12 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void SendResponseFromMemory (byte[] data, int length)
 		{
+            Console.WriteLine("SendResponseFromMemory - Start    . " + data.Length + "  " + length);
 			EnsureHeadersSent ();
-
+            Console.WriteLine("SendResponseFromMemory - HeadersOk. " + data.Length + "  " + length);
 			transport.SendOutput (requestId, requestNumber, data, length);
+            Console.WriteLine("SendResponseFromMemory - Done     . " + data.Length + "  " + length);
+
 		}
 
 		public override void SendStatus (int statusCode, string statusDescription)

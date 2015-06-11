@@ -191,6 +191,7 @@ send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8
     if (len < FCGI_MAX_BODY_SIZE)
         send_record (sock, record_type, requestId, data, 0, len);
     else {
+		INFO_OUT("request larger than FCGI_MAX_BODY_SIZE", request_num);
         int index=0;
         while (index < len) {
             int chunk_len = (len - index < FCGI_SUGGESTED_BODY_SIZE)
@@ -207,11 +208,11 @@ void
 send_output (guint64 requestId, int request_num, guint8* data, int len)
 {
     if (finalized) return;
-
+	INFO_OUT("SendOutput for request n=%i start", request_num);
     pthread_mutex_lock (&requests_lock);
     Request* req=(Request *)g_hash_table_lookup (requests, &requestId);
     pthread_mutex_unlock (&requests_lock);
-
+	INFO_OUT("SendOutput for request n=%i unlocked", request_num);
     if (req && req->request_num == request_num) {
         cmdsocket* sock = find_cmdsocket (req->fd);
         if (sock != NULL) {
@@ -220,6 +221,7 @@ send_output (guint64 requestId, int request_num, guint8* data, int len)
     } else {
         INFO_OUT ("can't find request n=%i", request_num);
     }
+	INFO_OUT("SendOutput for request n=%i done", request_num);
 }
 
 void
