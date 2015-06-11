@@ -344,7 +344,8 @@ namespace HyperFastCgi.AppHosts.AspNet
 				SendResponseFromMemory (bytes, bytes.Length);
 				FlushResponse (true);
 			} catch (Exception ex) { // should "never" happen
-				throw ex;
+                Console.WriteLine("It happened..." + ex);
+				throw;
 			}
 		}
 
