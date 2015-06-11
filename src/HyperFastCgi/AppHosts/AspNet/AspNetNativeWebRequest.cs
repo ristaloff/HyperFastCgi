@@ -211,12 +211,19 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void CloseConnection ()
 		{
-			if (closed)
+            Console.WriteLine("Closing connection...");
+		    if (closed)
+		    {
+                Console.WriteLine("Connection already closed.");		        
 				return;
+		    }
 
 			closed = true;
+            Console.Write("EnsureHeadersSent... ");
 			this.EnsureHeadersSent ();
+            Console.WriteLine("OK");
 			transport.EndRequest(requestId,requestNumber, 0);
+            Console.WriteLine("Connection closed!");
 		}
 
 		protected void SendFromStream (Stream stream, long offset, long length)
