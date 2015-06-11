@@ -313,9 +313,11 @@ namespace HyperFastCgi.AppHosts.AspNet
 				HttpRuntime.ProcessRequest (this);
                 Console.WriteLine("HttpRuntime.ProcessRequest Done");
 			} catch (HttpException ex) {
+                Console.WriteLine("Failed: " + ex);
 				inUnhandledException = true;
 				error = ex.GetHtmlErrorMessage ();
 			} catch (Exception ex) {
+                Console.WriteLine("Failed: " + ex);
 				inUnhandledException = true;
 				HttpException hex = new HttpException (400, "Bad request", ex);
 				error = hex.GetHtmlErrorMessage ();
@@ -327,7 +329,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 				return;
 		    }
 
-			if (error.Length == 0)
+			if (error != null && error.Length == 0)
 				error = String.Format (defaultExceptionHtml, "Unknown error");
 
 			try {
@@ -336,10 +338,8 @@ namespace HyperFastCgi.AppHosts.AspNet
 				SendUnknownResponseHeader ("Date", DateTime.Now.ToUniversalTime ().ToString ("r"));
 
 				Encoding enc = Encoding.UTF8;
-				if (enc == null)
-					enc = Encoding.ASCII;
 
-				byte[] bytes = enc.GetBytes (error);
+			    byte[] bytes = enc.GetBytes (error);
 
 				SendUnknownResponseHeader ("Content-Type", "text/html; charset=" + enc.WebName);
 				SendUnknownResponseHeader ("Content-Length", bytes.Length.ToString ());
