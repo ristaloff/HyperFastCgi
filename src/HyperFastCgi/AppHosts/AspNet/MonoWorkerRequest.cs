@@ -342,7 +342,9 @@ namespace HyperFastCgi.AppHosts.AspNet
 				SendUnknownResponseHeader ("Content-Type", "text/html; charset=" + enc.WebName);
 				SendUnknownResponseHeader ("Content-Length", bytes.Length.ToString ());
 				SendResponseFromMemory (bytes, bytes.Length);
+                Console.Write("Flushing response ...");
 				FlushResponse (true);
+                Console.WriteLine(" OK.");
 			} catch (Exception ex) { // should "never" happen
                 Console.WriteLine("It happened..." + ex);
 				throw;
