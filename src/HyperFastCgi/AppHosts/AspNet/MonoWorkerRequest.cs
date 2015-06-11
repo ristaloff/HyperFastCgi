@@ -304,6 +304,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public void ProcessRequest ()
 		{
+            Console.WriteLine("ProcessRequest");
 			string error = null;
 			inUnhandledException = false;
 

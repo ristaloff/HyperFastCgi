@@ -228,6 +228,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		protected void SendFromStream (Stream stream, long offset, long length)
 		{
+            Console.WriteLine("SendFromStream");
 			if (offset < 0 || length <= 0)
 				return;
 
