@@ -309,21 +309,23 @@ namespace HyperFastCgi.AppHosts.AspNet
 			inUnhandledException = false;
 
 			try {
+                Console.WriteLine("HttpRuntime.ProcessRequest");
 				HttpRuntime.ProcessRequest (this);
+                Console.WriteLine("HttpRuntime.ProcessRequest Done");
 			} catch (HttpException ex) {
 				inUnhandledException = true;
 				error = ex.GetHtmlErrorMessage ();
 			} catch (Exception ex) {
 				inUnhandledException = true;
 				HttpException hex = new HttpException (400, "Bad request", ex);
-				if (hex != null) // just a precaution
-					error = hex.GetHtmlErrorMessage ();
-				else
-					error = String.Format (defaultExceptionHtml, ex.Message);
+				error = hex.GetHtmlErrorMessage ();
 			}
 
-			if (!inUnhandledException)
+		    if (!inUnhandledException)
+		    {
+                Console.WriteLine("ProcessRequest done!");
 				return;
+		    }
 
 			if (error.Length == 0)
 				error = String.Format (defaultExceptionHtml, "Unknown error");
