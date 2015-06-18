@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{B868D1B9-E281-4C2F-8C4F-48EDC745AFAA}</ProjectGuid>
+    <Compiler>
+      <Compiler ctype="GccCompiler" />
+    </Compiler>
+    <Language>C</Language>
+    <Target>Bin</Target>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\Debug</OutputPath>
+    <OutputName>libnative</OutputName>
+    <CompileTarget>Bin</CompileTarget>
+    <DefineSymbols>DEBUG MONODEVELOP</DefineSymbols>
+    <SourceDirectory>.</SourceDirectory>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <OutputPath>bin\Release</OutputPath>
+    <OutputName>libnative</OutputName>
+    <CompileTarget>Bin</CompileTarget>
+    <OptimizationLevel>3</OptimizationLevel>
+    <DefineSymbols>MONODEVELOP</DefineSymbols>
+    <SourceDirectory>.</SourceDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="Makefile" />
+    <None Include="Makefile.am" />
+    <None Include="Makefile.in" />
+    <None Include="fcgi-transport.h" />
+    <None Include="fcgi.h" />
+    <None Include="host-list.h" />
+    <None Include="libev.h" />
+    <None Include="libnative.cbp" />
+    <None Include="mono-bridge-def.h" />
+    <None Include="mono-bridge.h" />
+    <None Include="socket-helper.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="domain-bridge.c" />
+    <Compile Include="fcgi-transport.c" />
+    <Compile Include="fcgi.c" />
+    <Compile Include="host-list.c" />
+    <Compile Include="libev.c" />
+    <Compile Include="main.c" />
+    <Compile Include="mono-bridge-def.c" />
+    <Compile Include="mono-bridge.c" />
+    <Compile Include="socket-helper.c" />
+  </ItemGroup>
+</Project>

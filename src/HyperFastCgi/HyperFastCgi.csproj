@@ -25,7 +25,12 @@
         <Variable name="MONO_PATH" value="." />
       </EnvironmentVariables>
     </EnvironmentVariables>
-    <Commandlineparameters>/config=../../../../samples/server.config  /applications=ssbench3:81:/:/var/www/nginx-mono /socket=tcp:127.0.0.1:9000 /loglevels=All /printlog /addtrailingslash=true</Commandlineparameters>
+    <Commandlineparameters>/config=/etc/hyperfastcgi/ebsfoto_hfc.conf</Commandlineparameters>
+    <CustomCommands>
+      <CustomCommands>
+        <Command type="BeforeExecute" command="/home/ristaloff/HyperFastCgi_BeforeDebug.sh" />
+      </CustomCommands>
+    </CustomCommands>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <Optimize>true</Optimize>
@@ -125,21 +130,6 @@
     <Folder Include="Helpers\" />
     <Folder Include="HostFactories\" />
   </ItemGroup>
-  <ProjectExtensions>
-    <MonoDevelop>
-      <Properties>
-        <MonoDevelop.Autotools.MakefileInfo IntegrationEnabled="True" RelativeMakefileName="Makefile.am" BuildTargetName="" CleanTargetName="" SyncReferences="True" IsAutotoolsProject="True" RelativeConfigureInPath="../..">
-          <BuildFilesVar Sync="True" Name="FILES" />
-          <DeployFilesVar />
-          <ResourcesVar Sync="True" Name="RESOURCES" />
-          <OthersVar />
-          <GacRefVar Sync="True" Name="REFERENCES" />
-          <AsmRefVar Sync="True" Name="REFERENCES" />
-          <ProjectRefVar Sync="True" Name="REFERENCES" />
-        </MonoDevelop.Autotools.MakefileInfo>
-      </Properties>
-    </MonoDevelop>
-  </ProjectExtensions>
   <ItemGroup>
     <Reference Include="Mono.Posix" />
     <Reference Include="System" />

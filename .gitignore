@@ -1,4 +1,5 @@
 # Autotools-generated files
+samples/Makefile
 /Makefile
 Makefile.in
 aclocal.m4
@@ -27,3 +28,5 @@ stamp-h.in
 *.swp
 *.o
 .deps
+*.userprefs
+compile

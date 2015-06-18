@@ -322,6 +322,7 @@ static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
 		ERROR_OUT("A socket error (0x%hx) occurred on fd %d.\n", error, cmdsocket->fd);
 	}
 
+	//INFO_OUT("free_cmdsocket(cmdsocket) is now commented out. fd=%d.\n", cmdsocket->fd);
 	free_cmdsocket(cmdsocket);
 }
 
