@@ -48,6 +48,7 @@ namespace HyperFastCgi.Transports
 
 		public virtual bool Process (ulong listenerTag, int requestNumber, byte[] header, byte[] recordBody)
 		{
+			Console.WriteLine ("BaseManagedListenerTransport - Process. Reqnumber: " + requestNumber + ". ListenerTag: " + listenerTag);
 			bool stopReceive = false;
 
 			Record record = new Record ();

@@ -161,10 +161,10 @@ namespace HyperFastCgi.AppHosts.AspNet
 				string slen = GetParameter ("CONTENT_LENGTH");
 
 				if (slen == null) {
-					//TODO: error, throw an exception
+					Console.WriteLine ("Should throw exception! slen == null");
 				}
 				if (!int.TryParse (slen, NumberStyles.None, CultureInfo.InvariantCulture, out len)) {
-					//TODO: error, throw an exception
+					Console.WriteLine ("Should throw exception!");
 				}
 
 				input_data = new byte[len];
@@ -172,6 +172,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 			if (input_data_offset + data.Length > input_data.Length) {
 				//TODO: throw an exception
+				Console.WriteLine ("Should throw exception! input_data_offset + data.Length > input_data.Length");//TODO: throw an exception
 			}
 
 			Buffer.BlockCopy (data, 0, input_data, input_data_offset, data.Length);
@@ -211,7 +212,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void CloseConnection ()
 		{
-            Console.WriteLine("Closing connection...");
+            //Console.WriteLine("Closing connection...");
 		    if (closed)
 		    {
                 Console.WriteLine("Connection already closed.");		        
@@ -219,11 +220,11 @@ namespace HyperFastCgi.AppHosts.AspNet
 		    }
 
 			closed = true;
-            Console.Write("EnsureHeadersSent... ");
+            //Console.Write("EnsureHeadersSent... ");
 			this.EnsureHeadersSent ();
-            Console.WriteLine("OK");
+            //Console.WriteLine("OK");
 			transport.EndRequest(requestId,requestNumber, 0);
-            Console.WriteLine("Connection closed!");
+            //Console.WriteLine("Connection closed!");
 		}
 
 		protected void SendFromStream (Stream stream, long offset, long length)
@@ -269,11 +270,11 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void SendResponseFromMemory (byte[] data, int length)
 		{
-            Console.WriteLine("SendResponseFromMemory - Start    . " + data.Length + "  " + length);
+            //Console.WriteLine("SendResponseFromMemory - Start    . " + data.Length + "  " + length);
 			EnsureHeadersSent ();
-            Console.WriteLine("SendResponseFromMemory - HeadersOk. " + data.Length + "  " + length);
+            //Console.WriteLine("SendResponseFromMemory - HeadersOk. " + data.Length + "  " + length);
 			transport.SendOutput (requestId, requestNumber, data, length);
-            Console.WriteLine("SendResponseFromMemory - Done     . " + data.Length + "  " + length);
+            //Console.WriteLine("SendResponseFromMemory - Done     . " + data.Length + "  " + length);
 
 		}
 

@@ -55,6 +55,10 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 	public abstract class MonoWorkerRequest : SimpleWorkerRequest
 	{
+		public static byte[] smallImageBytes = null;
+		public static byte[] mediumImageBytes = null;
+		public static byte[] largeImageBytes = null;
+
 		static readonly string defaultExceptionHtml = "<html><head><title>Runtime Error</title></head><body>An exception ocurred:<pre>{0}</pre></body></html>";
 		static readonly char[] mapPathTrimStartChars = { '/' };
 		static bool needToReplacePathSeparator;
@@ -304,30 +308,82 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public void ProcessRequest ()
 		{
-            Console.WriteLine("ProcessRequest");
+            //Console.WriteLine("MonoWorkerRequest -ProcessRequest");
 			string error = null;
 			inUnhandledException = false;
 
-			try {
-                Console.WriteLine("HttpRuntime.ProcessRequest");
-				HttpRuntime.ProcessRequest (this);
-                Console.WriteLine("HttpRuntime.ProcessRequest Done");
-			} catch (HttpException ex) {
-                Console.WriteLine("Failed: " + ex);
-				inUnhandledException = true;
-				error = ex.GetHtmlErrorMessage ();
-			} catch (Exception ex) {
-                Console.WriteLine("Failed: " + ex);
-				inUnhandledException = true;
-				HttpException hex = new HttpException (400, "Bad request", ex);
-				error = hex.GetHtmlErrorMessage ();
+			string requestCall = ((AspNetNativeWebRequest)this).Path.ToLower();
+			Console.WriteLine ("RequestCall: " + requestCall);
+			if (requestCall.Contains ("hello")) {			
+				try {
+					SendStatus (200, "Ok");
+					//SendUnknownResponseHeader ("Connection", "close");
+					//SendUnknownResponseHeader ("Date", DateTime.Now.ToUniversalTime ().ToString ("r"));
+
+					//Encoding enc = Encoding.UTF8;
+
+					var smallImagePath = "/home/ristaloff/testImage_small.jpeg";
+					var mediumImagePath = "/home/ristaloff/testImage_medium.jpeg";
+					var largeImagePath = "/home/ristaloff/testImage_large.jpeg"; //denne stopper det fort med, over 64K
+
+					if(smallImageBytes == null)
+						smallImageBytes = File.ReadAllBytes(smallImagePath);
+					if(mediumImageBytes == null)
+						mediumImageBytes = File.ReadAllBytes(mediumImagePath);
+					if(largeImageBytes == null)
+						largeImageBytes = File.ReadAllBytes(largeImagePath);
+
+					SendUnknownResponseHeader ("Content-Type", "image/jpeg;");
+					try{
+						if(requestCall.Contains("large")){
+							SendUnknownResponseHeader ("Content-Length", largeImageBytes.Length.ToString ());
+							SendResponseFromMemory (largeImageBytes, largeImageBytes.Length);
+						}
+						else if(requestCall.Contains("small")){
+							SendUnknownResponseHeader ("Content-Length", smallImageBytes.Length.ToString ());
+							SendResponseFromMemory (smallImageBytes, smallImageBytes.Length);
+						}
+						else{
+							SendUnknownResponseHeader ("Content-Length", mediumImageBytes.Length.ToString ());
+							SendResponseFromMemory (mediumImageBytes, mediumImageBytes.Length);
+						}
+					}
+					catch(Exception ex){
+						Console.WriteLine("Failed! SendResponseFromMemory. " + ex);
+					}
+					Console.WriteLine("Flushing response ...");
+					FlushResponse (true);
+					Console.WriteLine("Response flushed!");
+				} catch (Exception ex) { // should "never" happen
+					Console.WriteLine("It happened..." + ex);
+					throw;
+				}
+			} 
+			else {
+				try {
+					Console.WriteLine("HttpRuntime.ProcessRequest.");
+					HttpRuntime.ProcessRequest (this);
+					Console.WriteLine("HttpRuntime.ProcessRequest Done");
+				} catch (HttpException ex) {
+					Console.WriteLine("Failed: " + ex);
+					inUnhandledException = true;
+					error = ex.GetHtmlErrorMessage ();
+				} catch (Exception ex) {
+					Console.WriteLine("Failed: " + ex);
+					inUnhandledException = true;
+					HttpException hex = new HttpException (400, "Bad request", ex);
+					error = hex.GetHtmlErrorMessage ();
+				}
 			}
 
-		    if (!inUnhandledException)
-		    {
-                Console.WriteLine("ProcessRequest done!");
+
+			if (!inUnhandledException) {
+				Console.WriteLine ("ProcessRequest done!");
 				return;
-		    }
+			} 
+			else {
+				Console.WriteLine ("Some exception has happened!");
+			}
 
 			if (error != null && error.Length == 0)
 				error = String.Format (defaultExceptionHtml, "Unknown error");
@@ -344,11 +400,11 @@ namespace HyperFastCgi.AppHosts.AspNet
 				SendUnknownResponseHeader ("Content-Type", "text/html; charset=" + enc.WebName);
 				SendUnknownResponseHeader ("Content-Length", bytes.Length.ToString ());
 				SendResponseFromMemory (bytes, bytes.Length);
-                Console.Write("Flushing response ...");
+				Console.Write("ProcessRequest: Flushing response ...");
 				FlushResponse (true);
-                Console.WriteLine(" OK.");
+				Console.WriteLine("ProcessRequest: Flushing response. OK.");
 			} catch (Exception ex) { // should "never" happen
-                Console.WriteLine("It happened..." + ex);
+				Console.WriteLine("ProcessRequest: It happened..." + ex);
 				throw;
 			}
 		}

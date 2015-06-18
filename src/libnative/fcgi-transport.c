@@ -2,7 +2,11 @@
 #include <glib.h>
 #include <pthread.h>
 #include <string.h>
-#include <event.h>
+#include <event2/event.h>
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
+#include <event2/listener.h>
+#include <event2/util.h>
 #include "fcgi.h"
 #include "libev.h"
 #include "mono-bridge.h"
@@ -83,6 +87,7 @@ static void process_internal (Request *req, FCGI_Header *header, guint8 *body, i
 void
 process_record(int fd, FCGI_Header* header, guint8* body)
 {
+	INFO_OUT("process_record, fd=%i\r\n", fd);
     Request *req = NULL;
     guint64 id = GET_HASH(fd,fcgi_get_request_id(header));
 
@@ -136,32 +141,42 @@ process_record(int fd, FCGI_Header* header, guint8* body)
         {
             case FCGI_BEGIN_REQUEST:
                 //TODO: assert should not be reached
+                INFO_OUT("FCGI_BEGIN_REQUEST\r\n");
                 break;
             case FCGI_ABORT_REQUEST:
+            	INFO_OUT("FCGI_ABORT_REQUEST\r\n");
                 //TODO: remove from hash, send abort to web server
                 break;
             case FCGI_PARAMS:
+            	INFO_OUT("FCGI_PARAMS\r\n");
                 parse_params (req, header, body);
                 break;
             case FCGI_STDIN:
                 //TODO: read until the end
+                INFO_OUT("FCGI_STDIN\r\n");
                 process_internal (req, header, body, fcgi_get_content_len(header));
                 break;
             case FCGI_DATA:
+            	INFO_OUT("FCGI_DATA\r\n");
                 //TODO: nothing?
                 break;
             case FCGI_GET_VALUES:
+            	INFO_OUT("FCGI_GET_VALUES\r\n");
                 //currently there are no server-side settings (values)
                 break;
             default:
+            	INFO_OUT("default\r\n");
                 break;
         }
     }
 }
 
+static int errorCount = 0; //debug-helper
+
 static void
 send_record (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8* data, int offset, int len)
 {
+    INFO_OUT("Send record reqId=%i, fd=%i, offset=%i, len=%i, errorCount=%i.\r\n", requestId, sock->fd, offset, len, errorCount);
     FCGI_Header header = {
         .version = FCGI_VERSION_1,
         .type = record_type,
@@ -169,17 +184,76 @@ send_record (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8* dat
         .reserved = 0,
     };
 
+    if(!sock || !sock->buf_event){
+        ERROR_OUT("sock or sock->buf_event is null\r\n");
+        errorCount++;
+        return;
+    }
+
     fcgi_set_request_id (&header, requestId);
     fcgi_set_content_len (&header, len);
+    printf("EnabledBufferEvents:");
+    printf("no-locking=%i->", sock->buf_event->enabled);
+    //printf("with-locking=%i->", bufferevent_get_enabled(sock->buf_event));   //crashes here once every 10000 times or so.
+//    evbuffer_lock(output);
+//    evbuffer_add (output, &header, FCGI_HEADER_SIZE);
+//    evbuffer_add (output, data + offset, len);
 
-//    INFO_OUT("send_record reqId=%i, fd=%i, offset=%i, len=%i\n\r", requestId, sock->fd, offset, len);
+	if(!sock || !sock->buf_event){
+        ERROR_OUT("Check 2. sock or sock->buf_event is null\r\n");
+        errorCount++;
+        return;
+    }
+
+    printf("evbuffer:");
     struct evbuffer *output = bufferevent_get_output(sock->buf_event);
-    evbuffer_lock(output);
-    evbuffer_add (output, &header, FCGI_HEADER_SIZE);
-    evbuffer_add (output, data + offset, len);
-    evbuffer_unlock(output);
+    //struct evbuffer *input = bufferevent_get_input(sock->buf_event);
+    //evbuffer_unlock(output);
 
+    if(!output){
+        ERROR_OUT("Output is null\r\n");
+        errorCount++;
+        return;
+    }
+//    if(!input){
+//        ERROR_OUT("Input is null\r\n");
+//       errorCount++;
+//        return;
+//    }
+    printf("address=%p->", &output);
 
+    if(sock->buf_event->enabled == 4){
+    	ERROR_OUT("sock->buf_event->enabled == 4\r\n");
+       	errorCount++;
+    	return;
+    }
+    printf("ErrorCount=%i->", errorCount);
+    //size_t evbuffer_len = evbuffer_get_length(input); 
+    size_t evbuffer_len = evbuffer_get_length(output); //crashes...
+    printf("evbuffer-len=");
+    printf("%zu->",evbuffer_len);
+    //printf("lenght=%zu.->",output->total_len);
+
+    //printf("Locking->");
+    //bufferevent_lock (sock->buf_event); //crash here
+    if(evbuffer_len && evbuffer_len > 0){
+      	printf("Write1:");
+   		int write1success = bufferevent_write_buffer(sock->buf_event, output);
+   		printf("%i->", write1success);
+   	}
+   	else{
+   		printf("skip->");
+   	}
+   
+    printf("Write2:");
+    int write2Success = bufferevent_write(sock->buf_event, &header, FCGI_HEADER_SIZE);
+    printf("%i->Write3:", write2Success);
+    int write3success = bufferevent_write(sock->buf_event, data + offset, len);
+    printf("%i->", write3success);
+     //printf("Unlocking->");
+    //bufferevent_unlock (sock->buf_event);
+
+    printf("Sent!\n\r");
 //    bufferevent_lock (sock->buf_event);
 //    bufferevent_write_buffer(sock->buf_event, sock->buffer);
 //    bufferevent_unlock (sock->buf_event);
@@ -191,7 +265,7 @@ send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8
     if (len < FCGI_MAX_BODY_SIZE)
         send_record (sock, record_type, requestId, data, 0, len);
     else {
-		INFO_OUT("request larger than FCGI_MAX_BODY_SIZE\r\n", request_num);
+		INFO_OUT("request n=%i larger than FCGI_MAX_BODY_SIZE\r\n", request_num);
         int index=0;
         while (index < len) {
             int chunk_len = (len - index < FCGI_SUGGESTED_BODY_SIZE)
@@ -207,12 +281,12 @@ send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8
 void
 send_output (guint64 requestId, int request_num, guint8* data, int len)
 {
-    if (finalized) return;
 	INFO_OUT("SendOutput for request n=%i start\r\n", request_num);
+    if (finalized) return;
     pthread_mutex_lock (&requests_lock);
     Request* req=(Request *)g_hash_table_lookup (requests, &requestId);
     pthread_mutex_unlock (&requests_lock);
-	INFO_OUT("SendOutput for request n=%i unlocked\r\n", request_num);
+	//INFO_OUT("SendOutput for request n=%i unlocked\r\n", request_num);
     if (req && req->request_num == request_num) {
         cmdsocket* sock = find_cmdsocket (req->fd);
         if (sock != NULL) {
@@ -221,24 +295,34 @@ send_output (guint64 requestId, int request_num, guint8* data, int len)
     } else {
         INFO_OUT ("can't find request n=%i\r\n", request_num);
     }
-	INFO_OUT("SendOutput for request n=%i done\r\n", request_num);
+	//INFO_OUT("SendOutput for request n=%i done\r\n", request_num);
 }
 
 void
 end_request (guint64 requestId, int request_num, int app_status, int protocol_status)
 {
-	INFO_OUT("Ending request n=%i ...\r\n", request_num);
+	//INFO_OUT("Ending request n=%i ...\r\n", request_num);
     FCGI_EndRequestBody body = {
         .reserved1 = 0,
         .reserved2 = 0,
         .reserved3 = 0
     };
 
-    if (finalized) return;
+    if (finalized) {
+        INFO_OUT("Request n=%i. Is finalized.\r\n", request_num);
+        return;
+    }
 
     pthread_mutex_lock (&requests_lock);
     Request *req=(Request *)g_hash_table_lookup (requests, &requestId);
 
+    if(req){
+    	INFO_OUT("Ending Request n=%i, addr=%p.\r\n", request_num, &req);
+    }
+    else{
+    	INFO_OUT("Ending Request n=%i, Request pointer is null!.\r\n", request_num);
+    }
+    
     if (req && req->request_num == request_num) {
         g_hash_table_remove(requests, &requestId);
         pthread_mutex_unlock (&requests_lock);
@@ -248,16 +332,29 @@ end_request (guint64 requestId, int request_num, int app_status, int protocol_st
             body.protocolStatus=protocol_status;
             send_record (sock, FCGI_END_REQUEST, req->requestId, (guint8 *)&body, 0, sizeof (body));
 
+            INFO_OUT("Request n=%i. Last record sent.\r\n", request_num);
             //flush and disconnect cmdsocket if KEEP_ALIVE is false
+
             if (!req->keep_alive) {
+                INFO_OUT("Request n=%i. Keep alive false. Flush cmd_socket...\r\n", request_num);
                 flush_cmdsocket(sock);
             }
         }
-        g_free (req);
+
+        if(req){
+    		INFO_OUT("Calling g_free(req) n=%i, addr=%p.\r\n", request_num, &req);
+	    }
+	    else{
+	    	INFO_OUT("Calling g_free(req) n=%i, Request pointer is null!.\r\n", request_num);
+	    }
+	    g_free (req);
+        //if(req
+        //INFO_OUT("Request n=%i, addr=%p. Calling g_free(req)\r\n", request_num, &req);
+
     }
     else {
-        pthread_mutex_unlock (&requests_lock);
         INFO_OUT ("can't find request n=%i\r\n",request_num);
+        pthread_mutex_unlock (&requests_lock);
     }
 	INFO_OUT("Request n=%i ended\r\n", request_num);
 }
@@ -292,8 +389,10 @@ parse_params(Request *req, FCGI_Header *header, guint8 *data)
             offset += 3;
         }
 
-//        if (offset + nlen + vlen > dataLength)
-//                throw new ArgumentOutOfRangeException ("offset");
+        if (offset + nlen + vlen > data_len){
+            INFO_OUT("ArgumentOutOfRangeException: offset\r\n");
+        }
+
         name = (gchar *)(data + offset);
         offset += nlen;
         value = (gchar *)(data + offset);
@@ -353,24 +452,24 @@ parse_params(Request *req, FCGI_Header *header, guint8 *data)
                 //TODO: we can reference chunks instead of using strndup
                 if (!req->hostname && nlen == 11 && (memcmp(name,"SERVER_NAME",11) == 0)) {
                         req->hostname = pair.value;
-//                        INFO_OUT("VHost=%s\n", req->hostname);
+ //                       INFO_OUT("VHost=%s\n", req->hostname);
                 }
 
                 if (req->port == -1 && nlen == 11 && (memcmp(name,"SERVER_PORT",11) == 0)) {
                         req->port = atoi(pair.value);
-//                        INFO_OUT("VPort=%i\n", req->port);
+  //                      INFO_OUT("VPort=%i\n", req->port);
                 }
 
                 if (!req->vpath && nlen == 11 && (memcmp(name,"SCRIPT_NAME",11) == 0)) {
                     req->vpath = pair.value;
-//                    INFO_OUT("VPath=%s\n", req->vpath);
+   //                 INFO_OUT("VPath=%s\n", req->vpath);
                 }
-//                INFO_OUT("name=%s value=%s\n",pair.name, pair.value);
+   //             INFO_OUT("name=%s value=%s\n",pair.name, pair.value);
 
                 //check, that we've got all server variables we're needed
                 if (req->hostname && req->port != -1 && req->vpath) {
                     //now we can find host by path
-//                    INFO_OUT("host=%s port=%i vpath=%s\n", req->hostname, req->port, req->vpath);
+                    INFO_OUT("host=%s port=%i vpath=%s\n", req->hostname, req->port, req->vpath);
                     req->host_info = find_host_by_path(req->hostname, req->port, req->vpath);
 
                     //if *.webapp configuration is OK, we'll found a host and

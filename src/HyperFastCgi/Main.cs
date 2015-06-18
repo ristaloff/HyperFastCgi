@@ -267,7 +267,7 @@ namespace HyperFastCgi
 
 			configmanager = null;
 
-			if (stopable) {
+			if (true) {
 				Console.WriteLine ("Hit Return to stop the server.");
 				Console.ReadLine ();
 			} else {

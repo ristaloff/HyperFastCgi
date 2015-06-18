@@ -91,21 +91,23 @@ namespace HyperFastCgi.Helpers.Logging
 		                          string format, params object[] args)
 		{
 			Write (level, string.Format (provider, format, args));
+
 		}
 
 		public static void Write (LogLevel level, string format,
 		                          params object[] args)
 		{
 			Write (level, CultureInfo.CurrentCulture, format, args);
+
 		}
 
 		public static void Write (LogLevel level, string message)
 		{
-			if (logger.writer == null && !logger.write_to_console)
-				return;
+			//if (logger.writer == null && !logger.write_to_console)
+			//	return;
 
-			if ((Level & level) == LogLevel.None)
-				return;
+			//if ((Level & level) == LogLevel.None)
+			//	return;
 
 			string text = string.Format (CultureInfo.CurrentCulture,
 				              Strings.Logger_Format,
@@ -113,15 +115,15 @@ namespace HyperFastCgi.Helpers.Logging
 				              level,
 				              message);
 
-			lock (logger.write_lock) {
-				if (logger.write_to_console)
+			//lock (logger.write_lock) {
+				//if (logger.write_to_console)
 					Console.WriteLine (text);
 
-				if (logger.writer != null) {
-					logger.writer.WriteLine (text);
-					logger.writer.Flush ();
-				}
-			}
+				//if (logger.writer != null) {
+				//	logger.writer.WriteLine (text);
+				//	logger.writer.Flush ();
+				//}
+			//}
 		}
 
 		public static void Close ()

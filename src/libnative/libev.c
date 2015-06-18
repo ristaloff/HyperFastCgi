@@ -37,7 +37,11 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <event.h>
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
+#include <event2/listener.h>
+#include <event2/util.h>
+#include <event2/event.h>
 #include <event2/thread.h>
 #include <glib.h>
 #include "fcgi.h"
@@ -49,11 +53,11 @@
 
 
 #ifdef MT
-    #define BUF_OPT BEV_OPT_THREADSAFE
+    #define BUF_OPT BEV_OPT_THREADSAFE 
 #else
     #define BUF_OPT 0
 #endif
-
+//| BEV_OPT_CLOSE_ON_FREE
 // Prints a message and returns 1 if o is NULL, returns 0 otherwise
 #define CHECK_NULL(o) ( (o) == NULL ? ( fprintf(stderr, "\e[0;1m%s is null.\e[0m\n", #o), 1 ) : 0 )
 static void shutdown_cmdsocket(struct cmdsocket *cmdsocket);
@@ -62,11 +66,19 @@ static void shutdown_cmdsocket(struct cmdsocket *cmdsocket);
 static pthread_mutex_t sockets_lock;
 static GHashTable* sockets = NULL;
 
+static struct event_base *server_loop;
+static struct event *connect_event;
+//listening socket
+static int listenfd;
+static sa_family_t family;
+static struct sockaddr_storage listen_addr;
+
 static void add_cmdsocket(struct cmdsocket *cmdsocket)
 {
     struct cmdsocket* prev;
 
     pthread_mutex_lock(&sockets_lock);
+    INFO_OUT("add_cmdsocket. fd=%i\n", cmdsocket->fd);
     prev = g_hash_table_lookup(sockets, GINT_TO_POINTER(cmdsocket->fd));
     if (!prev) {
         g_hash_table_insert(sockets, GINT_TO_POINTER(cmdsocket->fd), cmdsocket);
@@ -74,14 +86,14 @@ static void add_cmdsocket(struct cmdsocket *cmdsocket)
     pthread_mutex_unlock(&sockets_lock);
 
     if (prev) {
-        ERROR_OUT("Trying to add existing socket %i",cmdsocket->fd);
+        ERROR_OUT("Trying to add existing socket %i\n",cmdsocket->fd);
         //TODO: close the socket (previous or new one) and free resources
         pthread_mutex_lock(&sockets_lock);
         g_hash_table_insert(sockets, GINT_TO_POINTER(cmdsocket->fd), cmdsocket);
         pthread_mutex_unlock(&sockets_lock);
 
     }
-
+    INFO_OUT("Socket added!. fd=%i\n", cmdsocket->fd);
 }
 
 cmdsocket* find_cmdsocket(int fd)
@@ -101,13 +113,14 @@ cmdsocket* find_cmdsocket(int fd)
 static void remove_cmdsocket(struct cmdsocket *cmdsocket)
 {
     gboolean res;
+	INFO_OUT("remove_cmdsocket. fd=%i\n", cmdsocket->fd);
 
     pthread_mutex_lock(&sockets_lock);
     res = g_hash_table_remove(sockets, GINT_TO_POINTER(cmdsocket->fd));
     pthread_mutex_unlock(&sockets_lock);
 
 	if (!res) {
-        ERROR_OUT("Trying to remove non-existing socket %i",cmdsocket->fd);
+        ERROR_OUT("Trying to remove non-existing socket %i\n",cmdsocket->fd);
 	}
 }
 
@@ -115,10 +128,11 @@ static void remove_cmdsocket(struct cmdsocket *cmdsocket)
 static struct cmdsocket *create_cmdsocket(int sockfd, struct sockaddr_storage *remote_addr, struct event_base *evloop)
 {
 	struct cmdsocket *cmdsocket;
+	INFO_OUT("create_cmdsocket. fd=%i\n", sockfd);
 
 	cmdsocket = calloc(1, sizeof(struct cmdsocket));
 	if(cmdsocket == NULL) {
-		ERRNO_OUT("Error allocating command handler info");
+		ERRNO_OUT("Error allocating command handler info\n");
 		close(sockfd);
 		return NULL;
 	}
@@ -136,27 +150,35 @@ static struct cmdsocket *create_cmdsocket(int sockfd, struct sockaddr_storage *r
 
 static void free_cmdsocket_only(struct cmdsocket *cmdsocket)
 {
+	//printf("free_cmdsocket");
+	INFO_OUT("free_cmdsocket. fd=%i\n", cmdsocket->fd);
 	// Close socket and free resources
 	if (cmdsocket->body != NULL) {
+		INFO_OUT("free_cmdsocket->body. fd=%i\n", cmdsocket->fd);
         g_free(cmdsocket->body);
 	}
 	if(cmdsocket->buf_event != NULL) {
-		bufferevent_free(cmdsocket->buf_event);
+		INFO_OUT("free_cmdsocket->buf_event. fd=%i\n", cmdsocket->fd);
+		//bufferevent_free(cmdsocket->buf_event); //todo , wa disabled for test
 	}
 	if(cmdsocket->buffer != NULL) {
-		evbuffer_free(cmdsocket->buffer);
+		INFO_OUT("Call to evbuffer_free(cmdsocket->buffer). Is this neccecary??\n");
+		//evbuffer_free(cmdsocket->buffer);
 	}
 	if(cmdsocket->fd >= 0) {
+		INFO_OUT("free_cmdsocket all. fd=%i\n", cmdsocket->fd);
 		shutdown_cmdsocket(cmdsocket);
 		if(close(cmdsocket->fd)) {
-			ERRNO_OUT("Error closing connection on fd %d", cmdsocket->fd);
+			ERRNO_OUT("Error closing connection on fd %d\n", cmdsocket->fd);
 		}
 	}
+	INFO_OUT("Crash here??\n");
 	free(cmdsocket);
+	INFO_OUT("Nope, move along.\n");
 }
 
 static gboolean free_cmdsocket_from_hash_table(gpointer key, gpointer value, gpointer user_data)
-{
+{	
     free_cmdsocket_only((struct cmdsocket *)value);
 
     return TRUE;
@@ -164,22 +186,30 @@ static gboolean free_cmdsocket_from_hash_table(gpointer key, gpointer value, gpo
 
 static void free_cmdsocket(struct cmdsocket *cmdsocket)
 {
+	INFO_OUT("free_cmdsocket, fd=%i.\n", cmdsocket->fd);
+	//printf("fd=%i.", cmdsocket->fd);
 	if(CHECK_NULL(cmdsocket)) {
+		INFO_OUT("ABORT!\n");
 		abort();
 	}
 
 	// Remove socket info from list of sockets
+	INFO_OUT("Call remove_cmdsocket\n");
 	remove_cmdsocket(cmdsocket);
 
+	INFO_OUT("Call free_cmdsocket_only\n");
 	free_cmdsocket_only(cmdsocket);
+	INFO_OUT("free_cmdsocket done\n");
 }
 
 static void shutdown_cmdsocket(struct cmdsocket *cmdsocket)
 {
+	INFO_OUT("shutdown_cmdsocket. fd=%i.\n", cmdsocket->fd);
 	if(!cmdsocket->shutdown && shutdown(cmdsocket->fd, SHUT_RDWR)) {
-		ERRNO_OUT("Error shutting down client connection on fd %d", cmdsocket->fd);
+		ERRNO_OUT("Error shutting down client connection on fd %d\n", cmdsocket->fd);
 	}
 	cmdsocket->shutdown = 1;
+	printf("Done.");
 }
 
 static int set_nonblock(int fd)
@@ -188,12 +218,12 @@ static int set_nonblock(int fd)
 
 	flags = fcntl(fd, F_GETFL);
 	if(flags == -1) {
-		ERRNO_OUT("Error getting flags on fd %d", fd);
+		ERRNO_OUT("Error getting flags on fd %d\n", fd);
 		return -1;
 	}
 	flags |= O_NONBLOCK;
 	if(fcntl(fd, F_SETFL, flags)) {
-		ERRNO_OUT("Error setting non-blocking I/O on fd %d", fd);
+		ERRNO_OUT("Error setting non-blocking I/O on fd %d\n", fd);
 		return -1;
 	}
 
@@ -210,6 +240,8 @@ void
 flush_cmdsocket(struct cmdsocket *cmdsocket)
 {
     struct evbuffer *output;
+	INFO_OUT("flush_cmdsocket.");
+	printf("fd=%i\n", cmdsocket->fd);
 
 	if(bufferevent_write_buffer(cmdsocket->buf_event, cmdsocket->buffer)) {
 		ERROR_OUT("Error sending data to client on fd %d\n", cmdsocket->fd);
@@ -219,16 +251,19 @@ flush_cmdsocket(struct cmdsocket *cmdsocket)
 
     //check that all bytes were sent. If yes, free_cmdsocket closes connection and frees buffers
     //If not, set the callback on write operation completed to close_connection
-	evbuffer_lock(output);
+	//evbuffer_lock(output);
 	if (evbuffer_get_length(output) == 0) {
+		INFO_OUT("ouput buffer empty");
 	    //shutdown_cmdsocket(cmdsocket);
-        evbuffer_unlock(output);
+        //evbuffer_unlock(output);
         free_cmdsocket(cmdsocket);
 	} else {
+		INFO_OUT("ouput buffer not empty");
 	    bufferevent_enable(cmdsocket->buf_event, EV_WRITE);
 	    bufferevent_setcb(cmdsocket->buf_event, NULL, close_connection,NULL,cmdsocket);
-        evbuffer_unlock(output);
+        //evbuffer_unlock(output);
 	}
+	INFO_OUT("flush_cmdsocket DONE!");
 }
 
 static const char* Header="HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 20\r\n\r\n";
@@ -237,7 +272,9 @@ static const char* Response="<p>Hello, world!</p>";
 
 static void process_http(size_t len, char *cmdline, struct cmdsocket *cmdsocket)
 {
-    evbuffer_add_printf(cmdsocket->buffer, "%s%s", Header,Response);
+	INFO_OUT("process_http");
+    //evbuffer_add_printf(cmdsocket->buffer, "%s%s", Header,Response);
+	evbuffer_add_printf(bufferevent_get_output(cmdsocket->buf_event), "%s%s", Header,Response);
 }
 
 //trash for padding reading
@@ -246,6 +283,9 @@ static unsigned char trash[256];
 static void fcgi_read(struct bufferevent *buf_event, void *arg)
 {
 	struct cmdsocket *cmdsocket = (struct cmdsocket *)arg;
+	INFO_OUT("fcgi_read start, fd1=%i,  fd2=%i.\n", cmdsocket->fd, bufferevent_getfd(buf_event));
+	INFO_OUT("cmdsocket: shutdown=%i", cmdsocket->shutdown);
+	cmdsocket->fd = bufferevent_getfd(buf_event);
 
     while (TRUE)
     {
@@ -310,23 +350,27 @@ static void fcgi_read(struct bufferevent *buf_event, void *arg)
 }
 
 static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
-{
+{    
+	INFO_OUT("Error %i", error);
 	struct cmdsocket *cmdsocket = (struct cmdsocket *)arg;
-
 	if(error & BEV_EVENT_EOF) {
-		INFO_OUT("Remote host disconnected from fd %d.\n", cmdsocket->fd);
+		INFO_OUT("\r\nRemote host disconnected from fd %d. Error (0x%hx). Shutdown %i\n\r", cmdsocket->fd, error, cmdsocket->shutdown);
 		cmdsocket->shutdown = 1;
 	} else if(error & BEV_EVENT_TIMEOUT) {
-		INFO_OUT("Remote host on fd %d timed out.\n", cmdsocket->fd);
+		INFO_OUT("\r\nRemote host on fd %d timed out.\n\r", cmdsocket->fd);
 	} else {
-		ERROR_OUT("A socket error (0x%hx) occurred on fd %d.\n", error, cmdsocket->fd);
+		ERROR_OUT("\r\nA socket error (0x%hx) occurred on fd %d.\n\r", error, cmdsocket->fd);
 	}
-
+	//while(1){
+	//}
+    //INFO_OUT("free_cmdsocket() is commented out");
 	free_cmdsocket(cmdsocket);
+	INFO_OUT("free_cmdsocket - OK!");
 }
 
 static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, struct event_base *evloop)
 {
+	INFO_OUT("SetupConnection: fd=%i.\r\n", sockfd); 
 	struct cmdsocket *cmdsocket;
 
 	if(set_nonblock(sockfd)) {
@@ -335,42 +379,53 @@ static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, s
 
 	// Copy connection info into a command handler info structure
 	cmdsocket = create_cmdsocket(sockfd, remote_addr, evloop);
+	INFO_OUT("Socket created. fd=%i.\r\n", sockfd); 
+	
 	if(cmdsocket == NULL) {
+		ERROR_OUT("cmdsocket == NULL\n");
 		close(sockfd);
 		return;
 	}
 
+	INFO_OUT("Initialize a buffered I/O event. fd=%i.\r\n", sockfd); //TODO check if sockfd is set correct in bufferevent_socket_new
 	// Initialize a buffered I/O event
 	//cmdsocket->buf_event = bufferevent_new(sockfd, fcgi_read, NULL, cmd_error, cmdsocket);
-	cmdsocket->buf_event = bufferevent_socket_new(evloop, sockfd, BUF_OPT);
+	cmdsocket->buf_event = bufferevent_socket_new(evloop, sockfd, BUF_OPT); //krasjer her!!   
 	if(CHECK_NULL(cmdsocket->buf_event)) {
 		ERROR_OUT("Error initializing buffered I/O event for fd %d.\n", sockfd);
 		free_cmdsocket(cmdsocket);
 		return;
 	}
-    bufferevent_setcb(cmdsocket->buf_event, fcgi_read, NULL, cmd_error, cmdsocket);
+	INFO_OUT("bufferevent_setcb\n");
+    bufferevent_setcb(cmdsocket->buf_event, fcgi_read, NULL, cmd_error, evloop);
 
+    INFO_OUT("bufferevent_base_set\n");
 	bufferevent_base_set(evloop, cmdsocket->buf_event);
 	//set infinite timeouts for read and write operations
+	INFO_OUT("Set infinite timeouts for read and write operations\n");
 	bufferevent_set_timeouts(cmdsocket->buf_event, NULL, NULL);
+	//if(bufferevent_enable(cmdsocket->buf_event, EV_READ|EV_WRITE)) {
 	if(bufferevent_enable(cmdsocket->buf_event, EV_READ)) {
 		ERROR_OUT("Error enabling buffered I/O event for fd %d.\n", sockfd);
 		free_cmdsocket(cmdsocket);
 		return;
 	}
-
+	INFO_OUT("Create the outgoing data buffer\n");
 	// Create the outgoing data buffer
-	cmdsocket->buffer = evbuffer_new();
+	cmdsocket->buffer = bufferevent_get_output(cmdsocket->buf_event);
 	if(CHECK_NULL(cmdsocket->buffer)) {
 		ERROR_OUT("Error creating output buffer for fd %d.\n", sockfd);
 		free_cmdsocket(cmdsocket);
 		return;
 	}
-	evbuffer_enable_locking(cmdsocket->buffer, NULL);
+	//INFO_OUT("Enable locking. remove?\n");
+	//evbuffer_enable_locking(cmdsocket->buffer, NULL);
+	INFO_OUT("Done.\n");
 }
 
 static void cmd_connect(int listenfd, short evtype, void *arg)
 {
+	INFO_OUT("cmd_connect\n");
 	struct sockaddr_storage remote_addr;
 	socklen_t addrlen = sizeof(remote_addr);
 	int sockfd;
@@ -386,7 +441,7 @@ static void cmd_connect(int listenfd, short evtype, void *arg)
 		sockfd = accept(listenfd, (struct sockaddr *)&remote_addr, &addrlen);
 		if(sockfd < 0) {
 			if(errno != EWOULDBLOCK && errno != EAGAIN) {
-				ERRNO_OUT("Error accepting an incoming connection");
+				ERRNO_OUT("Error accepting an incoming connection\n");
 			}
 			break;
 		}
@@ -395,15 +450,11 @@ static void cmd_connect(int listenfd, short evtype, void *arg)
 	}
 }
 
-static struct event_base *server_loop;
-static struct event connect_event;
-//listening socket
-static int listenfd;
-static sa_family_t family;
-static struct sockaddr_storage listen_addr;
+
 
 void Shutdown()
 {
+	INFO_OUT("Shutting down ...\n");
 	if(event_base_loopexit(server_loop, NULL)) {
 		ERROR_OUT("Error shutting down server\n");
 		return;
@@ -421,12 +472,12 @@ void Shutdown()
     pthread_mutex_destroy(&sockets_lock);
 
 	// Clean up libevent
-	if(event_del(&connect_event)) {
+	if(event_del(connect_event)) {
 		ERROR_OUT("Error removing connection event from the event loop.\n");
 	}
 	event_base_free(server_loop);
 	if(close_listening_socket(listenfd, family, &listen_addr)) {
-		ERRNO_OUT("Error closing listening socket");
+		ERRNO_OUT("Error closing listening socket\n");
 	}
 
 	INFO_OUT("Goodbye.\n");
@@ -434,8 +485,13 @@ void Shutdown()
 
 void ProcessLoop()
 {
-    if(event_base_dispatch(server_loop)) {
-		ERROR_OUT("Error running event loop.\n");
+	int flags = EVLOOP_NO_EXIT_ON_EMPTY;//EVLOOP_ONCE;//EVLOOP_NO_EXIT_ON_EMPTY;
+	INFO_OUT("ProcessLoop, flag=%i\n", flags);
+	int result = event_base_loop(server_loop, flags);
+	//INFO_OUT("ProcessLoop, event_base_dispatch.\n");
+	//int result = event_base_dispatch(server_loop);
+    if(result) {
+		ERROR_OUT("Error running event loop. Error=%i.\n", result);
 		return;
 	}
 }
@@ -481,20 +537,20 @@ int Listen(unsigned short int address_family, const char *addr, guint16 listen_p
 	// Begin listening for connections
 	listenfd = socket(family, SOCK_STREAM, 0);
 	if(listenfd == -1) {
-		ERRNO_OUT("Error creating listening socket, address_family=%hu",family);
+		ERRNO_OUT("Error creating listening socket, address_family=%hu\n",family);
 		return -1;
 	}
 	int tmp_reuse = 1;
 	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &tmp_reuse, sizeof(tmp_reuse))) {
-		ERRNO_OUT("Error enabling socket address reuse on listening socket");
+		ERRNO_OUT("Error enabling socket address reuse on listening socket\n");
 		return -1;
 	}
 	if(bind(listenfd, (struct sockaddr *)&listen_addr, listen_addr_len)) {
-		ERRNO_OUT("Error binding listening socket");
+		ERRNO_OUT("Error binding listening socket\n");
 		return -1;
 	}
 	if(listen(listenfd, 8)) {
-		ERRNO_OUT("Error listening to listening socket");
+		ERRNO_OUT("Error listening to listening socket\n");
 		return -1;
 	}
 
@@ -505,9 +561,10 @@ int Listen(unsigned short int address_family, const char *addr, guint16 listen_p
 	}
 
 	// Add an event to wait for connections
-	event_set(&connect_event, listenfd, EV_READ | EV_PERSIST, cmd_connect, server_loop);
-	event_base_set(server_loop, &connect_event);
-	if(event_add(&connect_event, NULL)) {
+	//event_set(&connect_event, listenfd, EV_READ | EV_PERSIST, cmd_connect, server_loop);
+	connect_event = event_new(server_loop, listenfd, EV_READ|EV_PERSIST, cmd_connect, server_loop);
+	if(event_add(connect_event, NULL)) {
+	//if(event_base_set(server_loop, &connect_event))
 		ERROR_OUT("Error scheduling connection event on the event loop.\n");
 	}
 
