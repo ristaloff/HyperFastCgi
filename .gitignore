@@ -29,3 +29,8 @@ stamp-h.in
 .deps
 HyperFastCgi.sln.DotSettings.user
 HyperFastCgi.v12.suo
+*.userprefs
+compile
+samples/Makefile
+src/libnative/libnative.cproj
+src/libnative/libnative_sln.sln
