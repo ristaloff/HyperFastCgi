@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <event.h>
 #include <event2/thread.h>
 #include <glib.h>
@@ -246,7 +247,7 @@ static unsigned char trash[256];
 static void fcgi_read(struct bufferevent *buf_event, void *arg)
 {
 	struct cmdsocket *cmdsocket = (struct cmdsocket *)arg;
-
+	//INFO_OUT("cmdsocket->fd=%d", cmdsocket->fd);
     while (TRUE)
     {
         //read header
@@ -314,10 +315,10 @@ static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
 	struct cmdsocket *cmdsocket = (struct cmdsocket *)arg;
 
 	if(error & BEV_EVENT_EOF) {
-		INFO_OUT("Remote host disconnected from fd %d.\n", cmdsocket->fd);
+		INFO_OUT("Remote host disconnected from fd %d. Error (0x%hx).\n", cmdsocket->fd, error);
 		cmdsocket->shutdown = 1;
 	} else if(error & BEV_EVENT_TIMEOUT) {
-		INFO_OUT("Remote host on fd %d timed out.\n", cmdsocket->fd);
+		INFO_OUT("Remote host on fd %d timed out. Error (0x%hx).\n", cmdsocket->fd, error);
 	} else {
 		ERROR_OUT("A socket error (0x%hx) occurred on fd %d.\n", error, cmdsocket->fd);
 	}
@@ -329,6 +330,9 @@ static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
 static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, struct event_base *evloop)
 {
 	struct cmdsocket *cmdsocket;
+
+	const struct timeval readTimeout = {1,0};
+	const struct timeval writeTimeout = {1,0};
 
 	if(set_nonblock(sockfd)) {
 		ERROR_OUT("Error setting non-blocking I/O on an incoming connection.\n");
@@ -353,7 +357,7 @@ static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, s
 
 	bufferevent_base_set(evloop, cmdsocket->buf_event);
 	//set infinite timeouts for read and write operations
-	bufferevent_set_timeouts(cmdsocket->buf_event, NULL, NULL);
+	bufferevent_set_timeouts(cmdsocket->buf_event, &readTimeout, &writeTimeout);
 	if(bufferevent_enable(cmdsocket->buf_event, EV_READ)) {
 		ERROR_OUT("Error enabling buffered I/O event for fd %d.\n", sockfd);
 		free_cmdsocket(cmdsocket);
