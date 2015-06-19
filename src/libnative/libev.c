@@ -357,7 +357,8 @@ static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, s
 
 	bufferevent_base_set(evloop, cmdsocket->buf_event);
 	//set infinite timeouts for read and write operations
-	bufferevent_set_timeouts(cmdsocket->buf_event, &readTimeout, &writeTimeout);
+	//bufferevent_set_timeouts(cmdsocket->buf_event, &readTimeout, &writeTimeout);
+	bufferevent_set_timeouts(cmdsocket->buf_event, NULL, NULL);
 	if(bufferevent_enable(cmdsocket->buf_event, EV_READ)) {
 		ERROR_OUT("Error enabling buffered I/O event for fd %d.\n", sockfd);
 		free_cmdsocket(cmdsocket);

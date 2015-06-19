@@ -206,20 +206,29 @@ send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8
 void
 send_output (guint64 requestId, int request_num, guint8* data, int len)
 {
-    if (finalized) return;
+    if (finalized) 
+    	return;
 
     pthread_mutex_lock (&requests_lock);
     Request* req=(Request *)g_hash_table_lookup (requests, &requestId);
     pthread_mutex_unlock (&requests_lock);
 
-    if (req && req->request_num == request_num) {
-        cmdsocket* sock = find_cmdsocket (req->fd);
-        if (sock != NULL) {
-            send_stream_data (sock, FCGI_STDOUT, req->requestId, data, len);
-        }
-    } else {
-        INFO_OUT ("can't find request n=%i", request_num);
+    if(!req){
+    	INFO_OUT("req is null for request n=%i", request_num);
+    	return;
     }
+
+    if (req->request_num != request_num) {
+        INFO_OUT("can't find request n=%i", request_num);
+        return;
+    } 
+    cmdsocket* sock = find_cmdsocket (req->fd);
+    if (sock == NULL) {
+    	INFO_OUT("can't find cmdsocket fd=%d, requestNumber=%i", req->fd, request_num);
+    	return;
+    }
+
+    send_stream_data (sock, FCGI_STDOUT, req->requestId, data, len);
 }
 
 void
@@ -236,8 +245,13 @@ end_request (guint64 requestId, int request_num, int app_status, int protocol_st
     pthread_mutex_lock (&requests_lock);
     Request *req=(Request *)g_hash_table_lookup (requests, &requestId);
 
-    if (req && req->request_num == request_num) {
-        g_hash_table_remove(requests, &requestId);
+    if(!req){
+    	INFO_OUT("req is null for request n=%i", request_num);
+    	return;
+    }
+
+    if (req->request_num == request_num) {
+       	g_hash_table_remove(requests, &requestId);
         pthread_mutex_unlock (&requests_lock);
         cmdsocket* sock = find_cmdsocket (req->fd);
         if (sock != NULL) {
@@ -250,12 +264,17 @@ end_request (guint64 requestId, int request_num, int app_status, int protocol_st
                 flush_cmdsocket(sock);
             }
         }
+        else{
+			INFO_OUT("can't find cmdsocket fd=%d, requestNumber=%i", req->fd, request_num);
+        }
         g_free (req);
+    } 
+    else{
+    	pthread_mutex_unlock (&requests_lock);
+       	INFO_OUT("can't find request n=%i", request_num);
     }
-    else {
-        pthread_mutex_unlock (&requests_lock);
-        INFO_OUT ("can't find request n=%i",request_num);
-    }
+    //TODO call g_free(req) here?
+
 }
 
 static gboolean
