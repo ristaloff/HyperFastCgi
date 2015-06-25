@@ -350,18 +350,21 @@ static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
 	if(error & BEV_EVENT_EOF) {
 		INFO_OUT("Remote host disconnected from fd %d. Error (0x%hx).\n", cmdsocket->fd, error);
 		cmdsocket->shutdown = 1;
+		remove_request_from_hashtable(cmdsocket->fd, &cmdsocket->header);
+		free_cmdsocket(cmdsocket);
 	} else if(error & BEV_EVENT_TIMEOUT) {
 		INFO_OUT("Remote host on fd %d timed out. Error (0x%hx).\n", cmdsocket->fd, error);
 	} else {
 		ERROR_OUT("A socket error (0x%hx) occurred on fd %d.\n", error, cmdsocket->fd);
 	}
 
+
 	//remove request from hash_table
 	//void remove_request_from_hashtable(int fd, FCGI_Header* header);
-	remove_request_from_hashtable(cmdsocket->fd, &cmdsocket->header);
 
 	//INFO_OUT("free_cmdsocket(cmdsocket) is now commented out. fd=%d.\n", cmdsocket->fd);
-	free_cmdsocket(cmdsocket);
+	//free_cmdsocket(cmdsocket);
+	//remove_request_from_hashtable(cmdsocket->fd, &cmdsocket->header);
 }
 
 static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, struct event_base *evloop)

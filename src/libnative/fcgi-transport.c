@@ -262,11 +262,11 @@ void remove_request_from_hashtable(int fd, FCGI_Header* header){
     	if (req->request_num == request_num) {
     		INFO_OUT("Removing request! requestId=%lu, request_num=%i", requestId, request_num);
 	       	g_hash_table_remove(requests, &requestId);
+        	g_free (req);
         }
         else{
         	INFO_OUT("Skip removing request! req->request_num != request_num. requestId=%lu, request_num=%i", requestId, request_num);
         }
-
     }
     pthread_mutex_unlock (&requests_lock);
     INFO_OUT("Done - requestId=%lu, request_num=%i", requestId, request_num);
