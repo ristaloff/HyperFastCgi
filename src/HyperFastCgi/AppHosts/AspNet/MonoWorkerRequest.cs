@@ -304,11 +304,17 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public void ProcessRequest ()
 		{
+			//Console.WriteLine ("ProcessRequest");
 			string error = null;
 			inUnhandledException = false;
 
 			try {
+				Console.WriteLine("");
+				Console.WriteLine ("MonoWorkerRequest - ProcessRequest - HttpRuntime.ProcessRequest - Start");
 				HttpRuntime.ProcessRequest (this);
+				Console.WriteLine ("MonoWorkerRequest - ProcessRequest - HttpRuntime.ProcessRequest - Done");
+				Console.WriteLine("");
+
 			} catch (HttpException ex) {
 				inUnhandledException = true;
 				error = ex.GetHtmlErrorMessage ();
@@ -324,10 +330,13 @@ namespace HyperFastCgi.AppHosts.AspNet
 			if (!inUnhandledException)
 				return;
 
+			Console.WriteLine ("MonoWorkerRequest - ProcessRequest - HttpRuntime.ProcessRequest - Something failed");
+
 			if (error.Length == 0)
 				error = String.Format (defaultExceptionHtml, "Unknown error");
 
 			try {
+				Console.WriteLine(@"SendStatus (400, ""Bad request"")");
 				SendStatus (400, "Bad request");
 				SendUnknownResponseHeader ("Connection", "close");
 				SendUnknownResponseHeader ("Date", DateTime.Now.ToUniversalTime ().ToString ("r"));
@@ -343,8 +352,10 @@ namespace HyperFastCgi.AppHosts.AspNet
 				SendResponseFromMemory (bytes, bytes.Length);
 				FlushResponse (true);
 			} catch (Exception ex) { // should "never" happen
+				Console.WriteLine("Should \"never\" happen" + ex);
 				throw ex;
 			}
+			Console.WriteLine ("ProcessRequest - Done");
 		}
 
 		public override void EndOfRequest ()

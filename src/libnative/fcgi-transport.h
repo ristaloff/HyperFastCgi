@@ -31,4 +31,9 @@ send_output (guint64 requestId, int request_num, guint8 *data, int len);
 void
 end_request (guint64 requestId, int request_num, int app_status, int protocol_status);
 
+/*
+ * Removes the request from the hashtable in case of cmd_error
+ */
+void remove_request_from_hashtable(int fd, FCGI_Header* header);
+
 

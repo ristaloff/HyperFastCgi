@@ -41,7 +41,7 @@ create_request (HostInfo *host, guint64 requestId, int request_num)
     //TODO: handle exception
     mono_domain_set(current,FALSE);
     if (ex)
-        ERROR_OUT("exception! %s","add_server_variable");
+        ERROR_OUT("exception! %s","add_server_variable\n");
 }
 
 void
@@ -59,7 +59,7 @@ add_server_variable (HostInfo *host, guint64 requestId, int request_num, gchar *
     //TODO: handle exception
     mono_domain_set(current,FALSE);
     if (ex)
-        ERROR_OUT("exception! %s","add_server_variable");
+        ERROR_OUT("exception! %s","add_server_variable\n");
 }
 
 void
@@ -96,6 +96,7 @@ headers_sent (HostInfo *host, guint64 requestId, int request_num)
 void
 add_body_part (HostInfo *host, guint64 requestId, int request_num, guint8 *body, int len, gboolean final)
 {
+	INFO_OUT("start - request_num=%i, len=%i\n", request_num, len);
     MonoException *ex;
     MonoArray *byte_array = NULL;
     MonoClass *byte_class = mono_get_byte_class();
@@ -109,11 +110,16 @@ add_body_part (HostInfo *host, guint64 requestId, int request_num, guint8 *body,
         void *dest_addr = mono_array_addr_with_size(byte_array, elem_size, 0);
         memcpy(dest_addr,body,len);
     }
-
+    INFO_OUT("to-host - request_num=%i, len=%i\n", request_num, len);
     host_add_body_part(host->host, requestId, request_num,
                             byte_array, final, &ex);
     //TODO: handle exception
+    INFO_OUT("returned from host - request_num=%i, len=%i\n", request_num, len);
+    if (ex)
+        ERROR_OUT("exception! %s","add_server_variable\n");
+
     mono_domain_set(current,FALSE);
+    INFO_OUT("Done - request_num=%i, len=%i\n", request_num, len);
 }
 
 void

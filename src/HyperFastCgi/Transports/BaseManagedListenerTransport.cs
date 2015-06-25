@@ -48,6 +48,7 @@ namespace HyperFastCgi.Transports
 
 		public virtual bool Process (ulong listenerTag, int requestNumber, byte[] header, byte[] recordBody)
 		{
+			Console.WriteLine ("BaseManagedListenerTransport: Process");
 			bool stopReceive = false;
 
 			Record record = new Record ();
@@ -186,6 +187,7 @@ namespace HyperFastCgi.Transports
 
 		private bool AddHeader(string name, string value, bool isHeader, object userData)
 		{
+			Console.WriteLine ("BaseManagedListenerTransport: AddHeader");
 			TransportRequest req = userData as TransportRequest;
 
 			//if we did not find a route yet

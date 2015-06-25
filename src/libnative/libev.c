@@ -138,22 +138,33 @@ static struct cmdsocket *create_cmdsocket(int sockfd, struct sockaddr_storage *r
 static void free_cmdsocket_only(struct cmdsocket *cmdsocket)
 {
 	// Close socket and free resources
+	INFO_OUT("free_cmdsocket_only\n");
 	if (cmdsocket->body != NULL) {
+		INFO_OUT("g_free(cmdsocket->body) ... ");
         g_free(cmdsocket->body);
+        printf("OK\n");
 	}
 	if(cmdsocket->buf_event != NULL) {
+		INFO_OUT("bufferevent_free(cmdsocket->buf_event) ... ");
 		bufferevent_free(cmdsocket->buf_event);
+		printf("OK\n");
 	}
 	if(cmdsocket->buffer != NULL) {
+		INFO_OUT("evbuffer_free ... ");
 		evbuffer_free(cmdsocket->buffer);
+		printf("OK\n");
 	}
 	if(cmdsocket->fd >= 0) {
+		INFO_OUT("shutdown_cmdsocket ... ");
 		shutdown_cmdsocket(cmdsocket);
 		if(close(cmdsocket->fd)) {
 			ERRNO_OUT("Error closing connection on fd %d", cmdsocket->fd);
 		}
+		printf("OK\n");
 	}
+	INFO_OUT("Free the socket\n");
 	free(cmdsocket);
+	INFO_OUT("Done\n");
 }
 
 static gboolean free_cmdsocket_from_hash_table(gpointer key, gpointer value, gpointer user_data)
@@ -165,14 +176,19 @@ static gboolean free_cmdsocket_from_hash_table(gpointer key, gpointer value, gpo
 
 static void free_cmdsocket(struct cmdsocket *cmdsocket)
 {
+	INFO_OUT("Checking cmdsocket\n");
 	if(CHECK_NULL(cmdsocket)) {
+		INFO_OUT("Calling abort()\n");
 		abort();
 	}
 
 	// Remove socket info from list of sockets
+	INFO_OUT("Remove cmdsocket\n");
 	remove_cmdsocket(cmdsocket);
 
+	INFO_OUT("free_cmdsocket_only\n");
 	free_cmdsocket_only(cmdsocket);
+	INFO_OUT("DONE\n");
 }
 
 static void shutdown_cmdsocket(struct cmdsocket *cmdsocket)
@@ -247,15 +263,29 @@ static unsigned char trash[256];
 static void fcgi_read(struct bufferevent *buf_event, void *arg)
 {
 	struct cmdsocket *cmdsocket = (struct cmdsocket *)arg;
-	//INFO_OUT("cmdsocket->fd=%d", cmdsocket->fd);
+	INFO_OUT("cmdsocket->fd=%d\n", cmdsocket->fd);
+	//TODO cmdsocket migth not be connected properly here.. How to check??
+	//Findcmdsocket func?
+	//sjekk at denne socket pekeren peker til samme adresse som sist satte i setup_connection... Må være lik , men sjekk uansett.
     while (TRUE)
     {
+    	if(!cmdsocket->buf_event){
+    		ERROR_OUT("cmdsocket->buf_event is null\n");
+    	}
+    	if(!buf_event){
+    		ERROR_OUT("buf_event is null\n");
+    	}
+    	INFO_OUT("Looooopwhoooop - cmdsocket->fd=%d\n", cmdsocket->fd);
         //read header
         if (cmdsocket->state == HEADER)
         {
+        	INFO_OUT("State = HEADER. Read %p  - %lu bytes\n", ((guint8 *)&cmdsocket->header) + cmdsocket->bytes_read, FCGI_HEADER_SIZE - cmdsocket->bytes_read);
+        	//TODO get timeout here...... probably something wrong with the cmdsocket... How to fail fast? Maybe setup_connection was not all complete. 
+        	//Se på ctrl + c melding den rydder opp mer her enn den gjør når den får vanlig remote disconnect? et spor?
             cmdsocket->bytes_read+=bufferevent_read(buf_event,
                                                     ((guint8 *)&cmdsocket->header) + cmdsocket->bytes_read,
                                                     FCGI_HEADER_SIZE - cmdsocket->bytes_read);
+            INFO_OUT("cmdsocket->header->requestId=%hu\n", fcgi_get_request_id(&cmdsocket->header));
             if (cmdsocket->bytes_read == FCGI_HEADER_SIZE)
             {
                 cmdsocket->bytes_read = 0;
@@ -269,6 +299,7 @@ static void fcgi_read(struct bufferevent *buf_event, void *arg)
         //read body
         if (cmdsocket->state == BODY)
         {
+        	INFO_OUT("State = BODY\n");
             unsigned short body_size=fcgi_get_content_len(&cmdsocket->header);
 
             cmdsocket->bytes_read+=bufferevent_read(buf_event,
@@ -287,6 +318,7 @@ static void fcgi_read(struct bufferevent *buf_event, void *arg)
         //skip padding bytes
         if (cmdsocket->state == PADDING)
         {
+        	INFO_OUT("State = PADDING\n");
             if (cmdsocket->header.paddingLength > 0) {
                 cmdsocket->bytes_read += bufferevent_read (buf_event,
                                                     trash,
@@ -295,6 +327,7 @@ static void fcgi_read(struct bufferevent *buf_event, void *arg)
 
             if (cmdsocket->bytes_read == cmdsocket->header.paddingLength)
             {
+            	INFO_OUT("process_record: cmdsocket->fd=%d\n", cmdsocket->fd);
                 process_record (cmdsocket->fd, &cmdsocket->header, cmdsocket->body);
 
                 g_free(cmdsocket->body);
@@ -323,12 +356,17 @@ static void cmd_error(struct bufferevent *buf_event, short error, void *arg)
 		ERROR_OUT("A socket error (0x%hx) occurred on fd %d.\n", error, cmdsocket->fd);
 	}
 
+	//remove request from hash_table
+	//void remove_request_from_hashtable(int fd, FCGI_Header* header);
+	remove_request_from_hashtable(cmdsocket->fd, &cmdsocket->header);
+
 	//INFO_OUT("free_cmdsocket(cmdsocket) is now commented out. fd=%d.\n", cmdsocket->fd);
 	free_cmdsocket(cmdsocket);
 }
 
 static void setup_connection(int sockfd, struct sockaddr_storage *remote_addr, struct event_base *evloop)
 {
+	INFO_OUT("fd=%d\n", sockfd);
 	struct cmdsocket *cmdsocket;
 
 	const struct timeval readTimeout = {1,0};
@@ -410,6 +448,7 @@ static struct sockaddr_storage listen_addr;
 
 void Shutdown()
 {
+	INFO_OUT("Shutting down ...\n")
 	if(event_base_loopexit(server_loop, NULL)) {
 		ERROR_OUT("Error shutting down server\n");
 		return;

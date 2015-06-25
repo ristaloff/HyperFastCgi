@@ -60,6 +60,7 @@ namespace HyperFastCgi.AppHosts.Raw
 
 		private CreateInstanceDelegate CreateDynamicMethod(Type requestType)
 		{
+			//Console.WriteLine ("RawHost: CreateDynamicMethod");
 			DynamicMethod createInstance = new DynamicMethod(
 				"CreateInstance", 
 				typeof(BaseRawRequest), 

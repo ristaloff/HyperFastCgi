@@ -139,7 +139,9 @@ namespace HyperFastCgi.AppHosts.Raw
 
 		public virtual void CompleteResponse ()
 		{
+			Console.WriteLine ("CompleteResponse");
 			transport.EndRequest (requestId, requestNumber, 0);
+			Console.WriteLine ("CompleteResponse - DONE");
 		}
 
 		public IWebRequest Request {

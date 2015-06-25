@@ -211,16 +211,22 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void CloseConnection ()
 		{
+			Console.WriteLine ("CloseConnection");
+
 			if (closed)
 				return;
 
 			closed = true;
+			Console.WriteLine ("EnsureHeadersSent");
 			this.EnsureHeadersSent ();
+			Console.WriteLine ("EndRequest");
 			transport.EndRequest(requestId,requestNumber, 0);
+			Console.WriteLine ("CloseConnection - done");
 		}
 
 		protected void SendFromStream (Stream stream, long offset, long length)
 		{
+			Console.WriteLine ("SendFromStream");
 			if (offset < 0 || length <= 0)
 				return;
 
@@ -239,6 +245,7 @@ namespace HyperFastCgi.AppHosts.AspNet
 				length -= count;
 				count = (int)System.Math.Min (length, fileContent.Length);
 			}
+			Console.WriteLine ("SendFromStream - Done");
 		}
 
 		public override void SendResponseFromFile (string filename, long offset, long length)
@@ -261,9 +268,11 @@ namespace HyperFastCgi.AppHosts.AspNet
 
 		public override void SendResponseFromMemory (byte[] data, int length)
 		{
+			//Console.WriteLine ("SendResponseFromMemory");
 			EnsureHeadersSent ();
-
+			//Console.WriteLine ("HeadersSent SendingOutput");
 			transport.SendOutput (requestId, requestNumber, data, length);
+			Console.WriteLine ("SendResponseFromMemory - DONE");
 		}
 
 		public override void SendStatus (int statusCode, string statusDescription)
@@ -622,12 +631,17 @@ namespace HyperFastCgi.AppHosts.AspNet
 		}
 		public void Send (int status, string description, IDictionary<string, string> headers, byte[] response)
 		{
+			Console.WriteLine ("Send1");
 			Send (status, description, headers);
+			Console.WriteLine ("Send1 - send");
 			SendResponseFromMemory (response, response.Length);
+			Console.WriteLine ("Send1 - Done");
 		}
 		public void Send (byte[] response)
 		{
+			Console.WriteLine ("Send2");
 			SendResponseFromMemory (response, response.Length);
+			Console.WriteLine ("Send2 - Done");
 		}
 		public void Send (Stream stream, long offset, long length)
 		{

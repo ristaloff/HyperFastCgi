@@ -39,6 +39,7 @@ static GHashTable* requests;
 static pthread_mutex_t requests_lock;
 
 static int request_num = 0;
+static int remove_req_func_called = 0;
 static int finalized = 0;
 
 static gboolean
@@ -71,7 +72,7 @@ static const char* error404 = "HTTP/1.0 404 Not Found\r\n" \
 
 static void process_internal (Request *req, FCGI_Header *header, guint8 *body, int len)
 {
-//    INFO_OUT("%s","process internal");
+    INFO_OUT("process internal\n");
     //process(host, req->hash, req->request_num);
     add_body_part(req->host_info, req->hash, req->request_num, body, len, len == 0);
 
@@ -85,6 +86,7 @@ process_record(int fd, FCGI_Header* header, guint8* body)
 {
     Request *req = NULL;
     guint64 id = GET_HASH(fd,fcgi_get_request_id(header));
+	INFO_OUT("type=%i, fd=%i, requestId=%lu, remove_reFunc_called=%i\n", header->type, fd, id, remove_req_func_called);
 
     if (finalized) return;
 
@@ -119,15 +121,23 @@ process_record(int fd, FCGI_Header* header, guint8* body)
 
             //if host is not single, preallocate space for server variables
             if (!req->host_info) {
+            	INFO_OUT("Host is not single, preallocate space for server variables. (req->hash=%lu, req->request_num=%i)\n", req->hash, req->request_num);
                 req->chunks = g_string_chunk_new(4096);
                 req->key_value_pairs = g_array_sized_new(FALSE, FALSE, sizeof(KeyValuePair), 128);
             } else {
                 //host is single, so we can create request now
+                INFO_OUT("create_request (req->hash=%lu, req->request_num=%i)\n", req->hash, req->request_num);
                 create_request (req->host_info, req->hash, req->request_num);
             }
 
+            //TODO: Why no unlock here?
+            pthread_mutex_unlock (&requests_lock); //TODO testing....
             return;
         }
+        else{
+        	INFO_OUT("Does not handle this request type %i. fd=%i\n", header->type, fd);
+        }
+
     }
     pthread_mutex_unlock (&requests_lock);
 
@@ -136,24 +146,31 @@ process_record(int fd, FCGI_Header* header, guint8* body)
         {
             case FCGI_BEGIN_REQUEST:
                 //TODO: assert should not be reached
+                INFO_OUT("FCGI_BEGIN_REQUEST. Should not be reached. fd=%i\n", fd);
                 break;
             case FCGI_ABORT_REQUEST:
                 //TODO: remove from hash, send abort to web server
+                INFO_OUT("FCGI_ABORT_REQUEST. Should remove from hash, Send abort to web server. fd=%i\n", fd);
                 break;
             case FCGI_PARAMS:
+            	INFO_OUT("FCGI_PARAMS. Calling parse_params(). fd=%i\n", fd);
                 parse_params (req, header, body);
                 break;
             case FCGI_STDIN:
                 //TODO: read until the end
+                INFO_OUT("FCGI_STDIN. process_internal(). fd=%i\n", fd);
                 process_internal (req, header, body, fcgi_get_content_len(header));
                 break;
             case FCGI_DATA:
                 //TODO: nothing?
+                INFO_OUT("FCGI_DATA. Do nothing? fd=%i\n", fd);
                 break;
             case FCGI_GET_VALUES:
                 //currently there are no server-side settings (values)
+                INFO_OUT("FCGI_GET_VALUES. Currently there are no server-side settings. fd=%i\n", fd);
                 break;
             default:
+            	INFO_OUT("Unhandled header type. fd=%i\n", fd);
                 break;
         }
     }
@@ -172,13 +189,13 @@ send_record (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8* dat
     fcgi_set_request_id (&header, requestId);
     fcgi_set_content_len (&header, len);
 
-//    INFO_OUT("send_record reqId=%i, fd=%i, offset=%i, len=%i\n\r", requestId, sock->fd, offset, len);
+    INFO_OUT("send_record reqId=%i, fd=%i, offset=%i, len=%i, recordType=%i ... \n", requestId, sock->fd, offset, len, record_type);
     struct evbuffer *output = bufferevent_get_output(sock->buf_event);
     evbuffer_lock(output);
     evbuffer_add (output, &header, FCGI_HEADER_SIZE);
     evbuffer_add (output, data + offset, len);
     evbuffer_unlock(output);
-
+    printf("OK\r\n");
 
 //    bufferevent_lock (sock->buf_event);
 //    bufferevent_write_buffer(sock->buf_event, sock->buffer);
@@ -188,6 +205,7 @@ send_record (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8* dat
 static void
 send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8* data, int len)
 {
+	INFO_OUT("Start\n");
     if (len < FCGI_MAX_BODY_SIZE)
         send_record (sock, record_type, requestId, data, 0, len);
     else {
@@ -201,6 +219,7 @@ send_stream_data (cmdsocket* sock, guint8 record_type, guint16 requestId, guint8
             index += chunk_len;
         }
     }
+    INFO_OUT("Done\n");
 }
 
 void
@@ -214,7 +233,8 @@ send_output (guint64 requestId, int request_num, guint8* data, int len)
     pthread_mutex_unlock (&requests_lock);
 
     if(!req){
-    	INFO_OUT("req is null for request n=%i", request_num);
+    	INFO_OUT("req is null for request n=%i\n", request_num);
+    	INFO_OUT("hash table size: %i\n", g_hash_table_size(requests));
     	return;
     }
 
@@ -231,17 +251,41 @@ send_output (guint64 requestId, int request_num, guint8* data, int len)
     send_stream_data (sock, FCGI_STDOUT, req->requestId, data, len);
 }
 
+void remove_request_from_hashtable(int fd, FCGI_Header* header){
+	remove_req_func_called++;
+	guint64 requestId = GET_HASH(fd, fcgi_get_request_id(header));
+	INFO_OUT("start - fd=%i, requestId=%lu, request_num=%i", fd, requestId, request_num);
+	pthread_mutex_lock (&requests_lock);
+    Request *req=(Request *)g_hash_table_lookup (requests, &requestId);
+
+    if(req){
+    	if (req->request_num == request_num) {
+    		INFO_OUT("Removing request! requestId=%lu, request_num=%i", requestId, request_num);
+	       	g_hash_table_remove(requests, &requestId);
+        }
+        else{
+        	INFO_OUT("Skip removing request! req->request_num != request_num. requestId=%lu, request_num=%i", requestId, request_num);
+        }
+
+    }
+    pthread_mutex_unlock (&requests_lock);
+    INFO_OUT("Done - requestId=%lu, request_num=%i", requestId, request_num);
+}
+
 void
 end_request (guint64 requestId, int request_num, int app_status, int protocol_status)
 {
+	INFO_OUT("Sending end_request for n=%i\n", request_num);
     FCGI_EndRequestBody body = {
         .reserved1 = 0,
         .reserved2 = 0,
         .reserved3 = 0
     };
 
-    if (finalized) return;
-
+    if (finalized){
+    	INFO_OUT("finalized\n");
+    	return;
+    }
     pthread_mutex_lock (&requests_lock);
     Request *req=(Request *)g_hash_table_lookup (requests, &requestId);
 
@@ -257,8 +301,9 @@ end_request (guint64 requestId, int request_num, int app_status, int protocol_st
         if (sock != NULL) {
             fcgi_set_app_status (&body, app_status);
             body.protocolStatus=protocol_status;
+            INFO_OUT("send_record for n=%i\n", request_num);
             send_record (sock, FCGI_END_REQUEST, req->requestId, (guint8 *)&body, 0, sizeof (body));
-
+            INFO_OUT("Done send_record for n=%i\n", request_num);
             //flush and disconnect cmdsocket if KEEP_ALIVE is false
             if (!req->keep_alive) {
                 flush_cmdsocket(sock);
@@ -273,6 +318,7 @@ end_request (guint64 requestId, int request_num, int app_status, int protocol_st
     	pthread_mutex_unlock (&requests_lock);
        	INFO_OUT("can't find request n=%i", request_num);
     }
+    INFO_OUT("Done sending end_request for n=%i\n", request_num);
     //TODO call g_free(req) here?
 
 }
@@ -393,6 +439,7 @@ parse_params(Request *req, FCGI_Header *header, guint8 *data)
                     //temporary place before
                     if (req->host_info) {
                         //create request on the bridge
+                        INFO_OUT("create_request (req->host_info, req->hash, req->request_num)");
                         create_request (req->host_info, req->hash, req->request_num);
 
                         //send all variables to host
