@@ -138,7 +138,10 @@ namespace HyperFastCgi.AppHosts.AspNet
 		public new void AddServerVariable(string name, string value)
 		{
 			//FIXME: maybe we should use base.AddServerVariable
-			parameter_table.Add (name, value);
+		    if (parameter_table.ContainsKey(name))
+		        parameter_table[name] = value;
+		    else
+		        parameter_table.Add(name, value);
 		}
 
 		public void AddHeader (string header, string value)
